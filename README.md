@@ -7,8 +7,8 @@ Hub lelang waktu nyata berbasis Java. Banyak peserta menawar bersamaan, barang d
 
 ## Tim Pengembang
 
-| Nama | NIM |  |
-| :--- | :--- | :--- 
+| Nama | NIM |
+| :--- | :--- |
 | Habil Rahman Soleh | 2407110968
 | Raja Muhammad Faridz Talbi | 2407111265 
 | Siti Nazira |  2407110007
