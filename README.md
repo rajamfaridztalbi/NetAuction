@@ -28,11 +28,11 @@ Hub lelang waktu nyata berbasis Java. Banyak peserta menawar bersamaan, barang d
 
 | Pilar | Implementasi | Berkas utama |
 |---|---|---|
-| 1. Concurrency (M10) | `newFixedThreadPool(32)` untuk klien, `newCachedThreadPool()` untuk transfer berkas; `ConcurrentHashMap`, `AtomicInteger`, `synchronized` per barang | `AuctionServer`, `AuctionManager`, `Auction` |
+| 1. Concurrency | `newFixedThreadPool(32)` untuk klien, `newCachedThreadPool()` untuk transfer berkas; `ConcurrentHashMap`, `AtomicInteger`, `synchronized` per barang | `AuctionServer`, `AuctionManager`, `Auction` |
 | 2. Protokol kustom dan chat (M11) | Protokol teks (CRLF) dengan 16 perintah dan pesan asinkron `ASYNC`; *background receiver thread* di klien | `ClientHandler`, `AuctionClient` |
-| 3. Transfer biner (M12) | `DataInput/OutputStream`, chunk 8KB, header metadata, `shutdownOutput()` | `FileTransferHandler`, `FileRegistry` |
-| 4. REST dan Gson (M13) | `HttpURLConnection` GET ke open.er-api.com, DTO dengan `@SerializedName`, `fromJson` | `CurrencyService`, `ExchangeRateResponse` |
-| 5. UDP (M9) | Ticker per detik, heartbeat PING/PONG, `setSoTimeout`, `TICK_ACK` dan retransmisi | `UdpTickerBroadcaster` |
+| 3. Transfer biner | `DataInput/OutputStream`, chunk 8KB, header metadata, `shutdownOutput()` | `FileTransferHandler`, `FileRegistry` |
+| 4. REST dan Gson  | `HttpURLConnection` GET ke open.er-api.com, DTO dengan `@SerializedName`, `fromJson` | `CurrencyService`, `ExchangeRateResponse` |
+| 5. UDP | Ticker per detik, heartbeat PING/PONG, `setSoTimeout`, `TICK_ACK` dan retransmisi | `UdpTickerBroadcaster` |
 
 ## Arsitektur dan Port
 
