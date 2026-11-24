@@ -244,6 +244,3 @@ Ticker UDP memuat status tiap barang (`[sisa mm:ss]`, `[mulai mm:ss]`, atau `[SE
 | `#/` | Daftar barang dengan filter kategori dan status, hitung mundur per barang |
 | `#/barang/<id>` | Halaman penawaran: kartu penawaran tertinggi, kolom "Penawaran Anda" dengan tombol `-10x`, `-`, `+`, `+10x`, hitung mundur, riwayat tawaran, unduh katalog, hapus barang (penjual, bila belum ada tawaran) |
 | `#/jual` | Halaman ajukan barang: nama, kategori, harga, berkas, waktu mulai, durasi, dan ringkasan jadwal |
-
-**Pengujian dengan waktu dipercepat:** jalankan server dengan `-Dnetauction.minuteMs=4000` agar 1 "menit" lelang = 4 detik
-(hanya untuk uji; jangan dipakai saat demo biasa).
