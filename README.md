@@ -1,246 +1,152 @@
-# NetAuction Live — Real-Time Auction & Financial Trading Hub
-**Mata Kuliah:** Pemrograman Jaringan [TIS31263] — Universitas Riau  
-**Kelompok:** Kelompok 7 (Skenario: *NetAuction Live*)
+# NetAuction Live
 
----
+Hub lelang waktu nyata berbasis Java. Banyak peserta menawar bersamaan, barang dibuka dan ditutup otomatis sesuai jadwal, dan pemenang diumumkan seketika.
 
-## 1. Arsitektur 5 Pilar Spesifikasi Teknis
-Aplikasi ini telah disesuaikan sepenuhnya dengan **Panduan Spesifikasi Teknis Final Project TIS31263**:
+**Mata Kuliah:** Pemrograman Jaringan — Universitas Riau  
+**Kelompok:** Kelompok 7 
 
-1. **Pilar 1 — Concurrency & Thread-Pool Management (M10)**
-   - `AuctionServer` menggunakan `Executors.newFixedThreadPool(32)` untuk melayani banyak klien TCP secara bersamaan dan `Executors.newCachedThreadPool()` untuk saluran transfer berkas biner.
-   - Seluruh state bersama (`sessions`, `auctions`, `subscribers`, `connectedClients`) diproteksi menggunakan `ConcurrentHashMap`, `AtomicInteger`/`AtomicLong`, dan blok `synchronized` per objek lelang untuk mencegah *race condition*.
-2. **Pilar 2 — Custom Application Protocol & Chat Messaging (M11)**
-   - Mendukung perintah protokol berbasis teks UTF-8 (`\r\n`): `LOGIN`, `LIST`, `USERS`, `BID`, `STATUS`, `CONVERT`, `BROADCAST`, `PRIVATE` (pesan antar-klien), `CATALOG`, `DOWNLOAD`, dan `EXIT`.
-   - Sisi klien (`AuctionClient`) menjalankan **Background Receiver Thread** (`tcp-async-receiver`) untuk menerima pesan `BROADCAST`, `PRIVATE`, dan peringatan `OUTBID` secara *asynchronous* tanpa memblokir menu utama.
-3. **Pilar 3 — Binary File Transfer & Chunking Stream (M12)**
-   - Disediakan melalui saluran biner pada **TCP Port 5001** (`FileTransferHandler`) menggunakan `DataInputStream`/`DataOutputStream` dan `BufferedInputStream`/`BufferedOutputStream` dengan ukuran *chunking buffer* **8KB (`8192 bytes`)**.
-   - Pengiriman diawali header metadata (`mode`, `nama berkas`, `ukuran berkas` dalam byte) dan diakhiri dengan `socket.shutdownOutput()` sebagai sinyal EOF sebelum soket ditutup.
-4. **Pilar 4 — REST API Integration & JSON Parsing (M13)**
-   - `CurrencyService` mengakses Exchange Rate API (`https://open.er-api.com/v6/latest/`) melalui `HttpURLConnection` (HTTP GET) dan memetakan respons JSON ke DTO `ExchangeRateResponse` menggunakan **Google Gson** (`fromJson` & anotasi `@SerializedName`).
-5. **Pilar 5 — UDP Telemetry & Heartbeat Subsystem (M9)**
-   - `UdpTickerBroadcaster` berjalan pada **UDP Port 5002** menggunakan `DatagramSocket` dan `DatagramPacket`.
-   - Mengirimkan **Live Ticker Feed** pembaruan harga lelang setiap 1 detik ke seluruh klien aktif serta memproses **Heartbeat PING/PONG** berkala dengan `setSoTimeout` dan retransmisi paket di lapisan aplikasi (`TICK_ACK`).
+## Tim Pengembang
 
----
+| Nama | NIM |  |
+| :--- | :--- | :--- 
+| Habil Rahman Soleh | 2407110968
+| Raja Muhammad Faridz Talbi | 2407111265 
+| Siti Nazira |  2407110007
 
-## 2. Struktur Direktori Proyek
+**Dosen Pengampu:** Linna Oktaviana Sari, S.T., M.T. & Radinal Dwiki Novendra, S.T., M.T.
+
+## Fitur
+
+- **Lelang terjadwal:** peserta mengajukan barang (kategori Smartphone, PC & Laptop, Aksesoris) dengan waktu mulai dan durasi. Server membuka dan menutup lelang otomatis, lalu mengumumkan pemenang.
+- **Penawaran tersinkronisasi:** kelipatan tawaran minimum, anti-sniping, dan notifikasi *outbid* real-time.
+- **Chat:** pesan ke semua peserta atau pribadi.
+- **Katalog berkas:** unduh dan unggah berkas biner (PNG, JPG, PDF).
+- **Konversi valas** dari REST API dan **live ticker harga** lewat UDP.
+- **Tiga klien:** CLI, dan web (HTML).
+
+## Lima Pilar Teknis
+
+| Pilar | Implementasi | Berkas utama |
+|---|---|---|
+| 1. Concurrency (M10) | `newFixedThreadPool(32)` untuk klien, `newCachedThreadPool()` untuk transfer berkas; `ConcurrentHashMap`, `AtomicInteger`, `synchronized` per barang | `AuctionServer`, `AuctionManager`, `Auction` |
+| 2. Protokol kustom dan chat (M11) | Protokol teks (CRLF) dengan 16 perintah dan pesan asinkron `ASYNC`; *background receiver thread* di klien | `ClientHandler`, `AuctionClient` |
+| 3. Transfer biner (M12) | `DataInput/OutputStream`, chunk 8KB, header metadata, `shutdownOutput()` | `FileTransferHandler`, `FileRegistry` |
+| 4. REST dan Gson (M13) | `HttpURLConnection` GET ke open.er-api.com, DTO dengan `@SerializedName`, `fromJson` | `CurrencyService`, `ExchangeRateResponse` |
+| 5. UDP (M9) | Ticker per detik, heartbeat PING/PONG, `setSoTimeout`, `TICK_ACK` dan retransmisi | `UdpTickerBroadcaster` |
+
+## Arsitektur dan Port
+
+Browser tidak dapat membuka soket TCP/UDP mentah, sehingga klien web terhubung lewat `WebGateway` (HTTP) yang meneruskan ke server memakai protokol soket yang sama dengan CLI dan Swing.
+
+| Layanan | Protokol | Port |
+|---|---|---|
+| Perintah dan pesan asinkron | TCP | 5000 |
+| Transfer berkas biner | TCP | 5001 |
+| Live ticker dan heartbeat | UDP | 5002 |
+| WebGateway (klien web) | HTTP | 8080 |
+
+## Struktur Proyek
+
 ```text
-NetAuction_Live/
-├── .vscode/
-│   └── settings.json
-└── netauction/
-    ├── README.md
-    ├── pom.xml
-    ├── lib/
-    │   └── gson-2.13.1.jar
-    ├── catalog_files/               # Berkas katalog & foto barang di server
-    │   ├── brosur_lengkap_lelang.pdf
-    │   ├── foto_laptop_rog.png
-    │   └── katalog_lelang.pdf
-    ├── downloads/                   # Folder tujuan unduhan klien
-    └── src/main/java/              # Struktur standar Maven
-        ├── client/
-        │   ├── AuctionClient.java
-        │   └── AuctionClientGUI.java
-        ├── server/
-        │   ├── Auction.java
-        │   ├── AuctionInfo.java
-        │   ├── AuctionManager.java
-        │   ├── AuctionServer.java
-        │   ├── ClientHandler.java
-        │   ├── FileTransferHandler.java
-        │   └── UdpTickerBroadcaster.java
-        └── util/
-            ├── AppLogger.java
-            ├── CurrencyService.java
-            └── ExchangeRateResponse.java
+netauction/
+├── pom.xml
+├── README.md
+├── lib/gson-2.13.1.jar
+├── catalog_files/                  # berkas katalog di server
+├── downloads/                      # tujuan unduhan klien
+└── src/main/
+    ├── java/
+    │   ├── server/   AuctionServer, ClientHandler, AuctionManager, Auction, AuctionInfo,
+    │   │             FileTransferHandler, FileRegistry, UdpTickerBroadcaster
+    │   ├── client/   AuctionClient (CLI), AuctionClientGUI (Swing)
+    │   ├── util/     CurrencyService, ExchangeRateResponse, AppLogger
+    │   └── web/      WebGateway
+    └── resources/web/  index.html, style.css, app.js
 ```
 
----
+## Cara Menjalankan
 
-## 3. Petunjuk Kompilasi & Menjalankan (Terminal / CMD / PowerShell)
+**Prasyarat:** JDK 17 atau lebih baru (diuji pada OpenJDK 21). Maven bersifat opsional.
 
-Pastikan berada di dalam folder `netauction/`:
+Jalankan seluruh perintah dari folder `netauction/`. Pada Windows, ganti pemisah classpath `:` dengan `;`.
+
+**1. Kompilasi**
+
 ```bash
-cd netauction
+# Linux / macOS
+mkdir -p out
+javac -cp lib/gson-2.13.1.jar -d out $(find src/main/java -name "*.java")
 ```
 
-### A. Kompilasi Source Code (Windows)
 ```powershell
+# Windows
 mkdir out
 dir /s /b src\main\java\*.java > sources.txt
 javac -cp "lib/gson-2.13.1.jar" -d out @sources.txt
 ```
 
-### B. Kompilasi Source Code (Linux / macOS)
+**2. Server**
+
 ```bash
-mkdir -p out
-javac -cp "lib/gson-2.13.1.jar" -d out $(find src/main/java -name "*.java")
+java -cp "out:lib/gson-2.13.1.jar" server.AuctionServer
 ```
 
-### C. Menjalankan Server
-*(Jalankan dari folder `netauction/` agar folder `catalog_files/` dan `auction.log` terbaca otomatis)*
-* **Windows:**
-  ```powershell
-  java -cp "out;lib/gson-2.13.1.jar" server.AuctionServer
-  ```
-* **Linux / macOS:**
-  ```bash
-  java -cp "out:lib/gson-2.13.1.jar" server.AuctionServer
-  ```
+**3. Klien** 
+```bash
+# Web: jalankan gateway, lalu buka http://localhost:8080
+java -cp "out:src/main/resources:lib/gson-2.13.1.jar" web.WebGateway
 
-### D. Menjalankan Client (Buka 2 atau lebih terminal untuk demo multi-klien)
-* **Windows:**
-  ```powershell
-  java -cp "out;lib/gson-2.13.1.jar" client.AuctionClient
-  ```
-* **Linux / macOS:**
-  ```bash
-  java -cp "out:lib/gson-2.13.1.jar" client.AuctionClient
-  ```
-*(Opsional: tambahkan argumen IP server jika dijalankan antar-komputer, contoh: `java -cp "out;lib/gson-2.13.1.jar" client.AuctionClient 192.168.1.10`)*
+# CLI (tambahkan IP server bila beda komputer)
+java -cp "out:lib/gson-2.13.1.jar" client.AuctionClient [ip_server]
 
----
+```
 
-## 4. Matriks Port Jaringan
-| Layanan | Protokol | Port | Fungsi |
-| :--- | :---: | :---: | :--- |
-| Command & Chat Engine | TCP | `5000` | Login, Bidding, Broadcast, Private Msg, Konversi Valas |
-| Binary Catalog Transfer | TCP | `5001` | Unduh & unggah berkas katalog/gambar biner (chunk 8KB) |
-| Live Ticker & Heartbeat | UDP | `5002` | Siaran ticker harga lelang per detik & heartbeat ping |
+**IntelliJ IDEA:** buka folder `netauction` sebagai proyek Maven, lalu buat konfigurasi Run untuk setiap kelas dengan *working directory* `$MODULE_WORKING_DIR$` agar `catalog_files/` terbaca.
 
+## Protokol Singkat (TCP 5000)
 
-### E. Menjalankan Client Versi GUI Java Swing (Bonus +20 Poin)
-* **Windows:**
-  ```powershell
-  java -cp "out;lib/gson-2.13.1.jar" client.AuctionClientGUI
-  ```
-* **Linux / macOS:**
-  ```bash
-  java -cp "out:lib/gson-2.13.1.jar" client.AuctionClientGUI
-  ```
+Satu perintah per baris, berakhiran CRLF. Balasan berformat `<kode> SUCCESS|ERROR <pesan>`.
 
----
-
-## Versi Web (HTML) - WebGateway
-
-Versi ini menambahkan antarmuka web tanpa mengubah `AuctionServer`. Browser tidak dapat membuka soket
-TCP/UDP mentah, sehingga `web.WebGateway` bertindak sebagai jembatan: satu sesi browser = satu koneksi TCP
-(port 5000) + satu soket UDP (port 5002). Pesan asinkron (OUTBID, broadcast, ticker UDP) dikirim ke browser
-lewat Server-Sent Events, sedangkan transfer berkas biner dialirkan dari port 5001.
-
-Kompilasi (dari folder `netauction`):
-
-    javac -cp lib/gson-2.13.1.jar -d out $(find src/main/java -name "*.java")
-
-Jalankan (3 terminal, semuanya dari folder `netauction`):
-
-    java -cp "out:lib/gson-2.13.1.jar" server.AuctionServer
-    java -cp "out:src/main/resources:lib/gson-2.13.1.jar" web.WebGateway
-    # lalu buka http://localhost:8080 di beberapa tab/browser untuk simulasi multi-peserta
-
-Di Windows, ganti pemisah classpath `:` dengan `;`.
-
-**Penting:** halaman web hanya bisa dibuka lewat `http://localhost:8080` (dilayani `WebGateway`). Membuka
-`index.html` langsung dari file atau server bawaan IDE akan menghasilkan 404 karena `/api/...` tidak ada di sana.
-Halaman (`index.html`, `style.css`, `app.js`) berada di `src/main/resources/web/` dan dimuat dari classpath, jadi tidak bergantung pada working directory.
-`catalog_files/` tetap dibaca dari working directory server (folder `netauction`).
-Argumen opsional gateway: `web.WebGateway <host_server> <port_http>`.
-
-Catatan kapasitas: AuctionServer melayani maksimal 32 klien bersamaan; koneksi ke-33 ditolak dengan `503`.
-Gateway menutup sesi web yang ditinggalkan (tab ditutup tanpa Keluar) setelah 45 detik.
-
----
-
-## Membuka di IntelliJ IDEA (Maven)
-
-1. **File > Open**, pilih folder `netauction` (yang berisi `pom.xml`), lalu **Open as Project**. Tunggu Maven selesai memuat dependency Gson.
-2. Source code berada di `src/main/java`, sesuai standar Maven, jadi `mvn compile` dan IntelliJ langsung mengenalinya.
-3. Buka **Run > Edit Configurations**, buat konfigurasi Application untuk `server.AuctionServer` dan `web.WebGateway` dan klien (`client.AuctionClient` atau `client.AuctionClientGUI`).
-4. **Working directory wajib folder `netauction`** (isi kolom Working directory dengan `$MODULE_WORKING_DIR$`) agar folder `catalog_files/` terbaca oleh server (halaman web sendiri dimuat dari classpath).
-5. Untuk menjalankan beberapa klien sekaligus, aktifkan **Allow multiple instances** pada konfigurasi klien.
-
-Library Gson diambil Maven dari `pom.xml`; berkas `lib/gson-2.13.1.jar` tetap disertakan untuk kompilasi manual dengan `javac`.
-
----
-
-## Fitur Jual Barang (khusus versi Web)
-
-Peserta dapat mengajukan barang untuk dilelang. Fitur ini **hanya ada di proyek Web ini**; versi Swing/CLI
-terpisah (`FinalProject-v4-maven`) tidak mengubah perilaku lelangnya.
-
-**Perintah protokol baru:** `SELL <nama_barang> <harga_awal> [nama_berkas]`
-
-    SELL Jam Tangan Seiko 750000 jam_seiko.png      -> 200 SUCCESS Barang #4 'Jam Tangan Seiko' resmi dilelang ...
-
-| Aturan | Nilai |
+| Perintah | Fungsi |
 |---|---|
-| Nama barang | 3-40 karakter (huruf, angka, spasi, `().,'-`) |
-| Harga awal | 1.000 sampai 12 digit rupiah |
-| Berkas katalog | opsional; harus sudah diunggah dan bertipe PNG/JPG/PDF |
-| Kuota | maks. 20 barang di ruang lelang, maks. 3 barang aktif per penjual (respons 409) |
-| Penjual menawar barang sendiri | ditolak `403` |
-| Pengumuman | server menyiarkan `ASYNC NEW_LOT ...` ke peserta lain; ID barang dibuat atomik (`AtomicInteger`) |
+| `LOGIN <nama>` | Masuk (3-15 karakter: huruf, angka, garis bawah) |
+| `LIST`, `USERS`, `STATUS <id>`, `HISTORY <id>` | Daftar barang, peserta aktif, detail barang, riwayat tawaran |
+| `BID <id> <nominal>` | Menawar |
+| `SELL <nama> <harga> [berkas] [@kategori] [+S<menit>] [+D<menit>]` | Mengajukan barang |
+| `DELLOT <id>` | Menghapus barang milik sendiri (sebelum ada tawaran) |
+| `BROADCAST <pesan>`, `PRIVATE <nama> <pesan>` | Chat |
+| `CATALOG`, `DOWNLOAD <nama>`, `UPTICKET`, `DELFILE <nama>` | Katalog berkas |
+| `CONVERT <dari> <ke> <nominal>` | Konversi valas |
+| `EXIT` | Keluar |
 
-Kolom ke-7 pada balasan `LIST`/`STATUS` kini berisi nama penjual (barang bawaan: `Balai Lelang`).
+Contoh: `SELL Kamera 450000 foto.png @aksesoris +S5 +D30` (kategori `@smartphone`, `@pclaptop`, `@aksesoris`; mulai `+S` 0/1/5/15/30/60 menit lagi; durasi `+D` 1/5/15/30/60 menit).
 
-**Pembatasan unggahan berkas** (ditegakkan di `FileTransferHandler`, dan diperiksa lebih dulu di `WebGateway`):
+**Pesan asinkron dari server:** `OUTBID`, `BID_UPDATE`, `NEW_LOT`, `LOT_REMOVED`, `FILE_REMOVED`, `AUCTION_START`, `AUCTION_END`, `WINNER`, `SOLD`, `UNSOLD`, `BROADCAST`, `PRIVATE`, `SYSTEM`.
 
-- Tipe: hanya `.png`, `.jpg`, `.jpeg`, `.pdf`.
-- Ukuran: maksimal 5 MB, berkas kosong ditolak.
-- Isi berkas harus cocok dengan tipenya (signature PNG / JPEG / `%PDF-`), sehingga ekstensi palsu ditolak.
-- Nama berkas: huruf, angka, titik, garis bawah, strip (maks. 60 karakter).
-- Berkas dengan nama yang sudah ada tidak ditimpa (`CREATE_NEW`); unggahan yang terputus dihapus otomatis.
+**Kode respons:** 200 berhasil, 400 format salah, 401 belum login, 403 tidak berwenang, 404 tidak ditemukan, 408 tidak aktif, 409 konflik aturan, 503 server penuh atau layanan kurs tidak tersedia.
 
----
+**Transfer biner (TCP 5001):** mode `DOWNLOAD`, `UPLOAD`, dan `UPLOAD_AUTH` (dengan tiket dari `UPTICKET` sehingga pengunggah tercatat sebagai pemilik). Unggahan dibatasi pada PNG, JPG, PDF, maksimal 5 MB, dan isi berkas harus cocok dengan tipenya.
 
-## Kategori, Hapus Barang, dan Hapus Berkas (versi Web)
+## Aturan Lelang
 
-**Kategori barang:** `smartphone`, `pclaptop` (PC & Laptop), `aksesoris`. Barang yang dijual tanpa kategori
-(klien CLI/Swing lama) masuk kategori `lainnya` dan hanya tampil di tab "Semua". Halaman web menyediakan
-tab filter per kategori (penyaringan dilakukan di browser dari hasil `LIST`).
+- **Siklus barang:** menunggu, berjalan, selesai. Penjadwal server membuka dan menutup barang otomatis.
+- **Tawaran:** pertama minimal sama dengan harga awal; berikutnya minimal tawaran tertinggi + kelipatan (Rp 10.000 bila harga di bawah Rp 1 juta, Rp 50.000 bila di atasnya).
+- **Anti-sniping:** tawaran di 30 detik terakhir memperpanjang waktu menjadi 30 detik lagi (maksimal 10 kali per barang).
+- **Pemenang:** penawar tertinggi saat waktu habis; tanpa tawaran berarti tidak terjual.
+- **Penjual** tidak boleh menawar barangnya sendiri.
+- **Kuota:** maksimal 20 barang aktif, 3 barang aktif per penjual.
+- **Barang bawaan** langsung berjalan selama 30 menit sejak server menyala.
 
-| Perintah / format | Keterangan |
-|---|---|
-| `SELL <nama> <harga> [berkas] [@kategori]` | Contoh: `SELL Samsung S23 3000000 foto.png @smartphone`. Kategori tidak dikenal ditolak `400`. |
-| `DELLOT <auction_id>` | Hanya penjual barang tersebut. Ditolak `403` bila bukan penjual (termasuk barang bawaan), `409` bila sudah ada penawaran. Pengecekan dan penghapusan atomik terhadap `BID` (tawaran ke barang yang baru dihapus dijawab `404`). Peserta lain menerima `ASYNC LOT_REMOVED ...`. |
-| `DELFILE <nama_berkas>` | Hanya pengunggah berkas. `403` untuk berkas bawaan/tanpa pemilik atau milik orang lain, `409` bila berkas masih dipakai barang lelang aktif. Peserta lain menerima `ASYNC FILE_REMOVED ...`. |
-| `UPTICKET` | Meminta tiket unggah sekali pakai (berlaku 60 detik). Dipakai gateway agar port 5001 tahu siapa pengunggahnya. |
-| Port 5001 `UPLOAD_AUTH` | Header: mode, tiket, nama berkas, ukuran (long). Sama seperti `UPLOAD` (chunk 8KB, `shutdownOutput()`), tetapi pengunggah dicatat sebagai pemilik berkas. Mode `UPLOAD` lama tetap diterima; berkasnya tidak memiliki pemilik sehingga tidak dapat dihapus peserta. |
-
-Format balasan: `LIST` memiliki kolom ke-8 (kategori), `CATALOG` memiliki kolom ke-3 (pemilik).
-Kepemilikan berkas disimpan di `file_owners.properties` (dibuat otomatis di working directory server) sehingga bertahan
-saat server dimulai ulang; berkas ini tidak perlu dikumpulkan.
-
----
-
-## Lelang Terjadwal, Pemenang, dan Halaman Penawaran (versi Web)
-
-**Siklus barang:** `menunggu` (sudah diajukan, belum mulai) -> `berjalan` (bisa ditawar) -> `selesai`.
-Penjadwal server (thread `auction-scheduler`, tiap 0,5 detik) membuka dan menutup barang otomatis. Pergantian status
-atomik terhadap `BID` (pemeriksaan waktu dilakukan di dalam kunci barang), sehingga tawaran yang datang setelah waktu habis
-selalu ditolak `409`. Barang bawaan langsung berjalan selama 30 menit sejak server menyala.
-
-| Perintah / aturan | Keterangan |
-|---|---|
-| `SELL <nama> <harga> [berkas] [@kategori] [+S<menit>] [+D<menit>]` | `+S` = mulai berapa menit lagi (0, 1, 5, 15, 30, 60; bawaan 0). `+D` = durasi (1, 5, 15, 30, 60; bawaan 15). Contoh: `SELL Kamera 450000 foto.png @aksesoris +S5 +D30`. |
-| `BID <id> <nominal>` | Ditolak `409` bila barang belum mulai, sudah berakhir, atau nominal di bawah minimal. Tawaran pertama minimal sama dengan harga awal; tawaran berikutnya minimal tawaran tertinggi + kelipatan (Rp 10.000 bila harga di bawah Rp 1 juta, Rp 50.000 bila di atasnya). |
-| Anti-sniping | Tawaran pada 30 detik terakhir memperpanjang waktu menjadi 30 detik lagi (maksimal 10 kali per barang). |
-| `HISTORY <id>` | Riwayat tawaran (terbaru dulu): `penawar;nominal;detik_lalu#...` (maks. 30). |
-| Pemenang | Penawar tertinggi saat waktu habis. Tanpa penawaran = "tidak terjual". |
-
-**Pesan asinkron baru:** `AUCTION_START` dan `AUCTION_END` (siaran ke semua peserta), `WINNER` (ke pemenang), `SOLD` / `UNSOLD` (ke penjual).
-Barang yang sudah selesai tidak dihitung ke kuota (maks. 20 barang aktif, 3 per penjual) dan disimpan sebagai riwayat (maks. 20 barang selesai).
-
-**Kolom balasan `LIST` / `STATUS`:** `id;nama;tawaran;penawar;usd;berkas;penjual;kategori;status;detik_sampai_mulai;detik_sampai_berakhir;kelipatan;harga_awal;jumlah_tawaran;tawaran_minimal`.
-Sisa waktu dikirim sebagai detik relatif jam server, sehingga hitung mundur di browser tidak bergantung jam komputer pengguna.
-Ticker UDP memuat status tiap barang (`[sisa mm:ss]`, `[mulai mm:ss]`, atau `[SELESAI, pemenang ...]`).
-
-**Halaman web (routing `#hash`, satu aplikasi sehingga koneksi tidak terputus):**
+## Antarmuka Web
 
 | Alamat | Isi |
 |---|---|
-| `#/` | Daftar barang dengan filter kategori dan status, hitung mundur per barang |
-| `#/barang/<id>` | Halaman penawaran: kartu penawaran tertinggi, kolom "Penawaran Anda" dengan tombol `-10x`, `-`, `+`, `+10x`, hitung mundur, riwayat tawaran, unduh katalog, hapus barang (penjual, bila belum ada tawaran) |
-| `#/jual` | Halaman ajukan barang: nama, kategori, harga, berkas, waktu mulai, durasi, dan ringkasan jadwal |
+| `#/` | Daftar barang dengan filter kategori dan status, hitung mundur |
+| `#/barang/<id>` | Halaman penawaran: harga tertinggi, kolom penawaran dengan tombol `-10x`, `-`, `+`, `+10x`, riwayat tawaran |
+| `#/jual` | Halaman ajukan barang dengan jadwal mulai dan durasi |
+
+## Catatan
+
+- Server melayani maksimal 32 klien bersamaan; koneksi ke-33 ditolak dengan `503`.
+- `auction.log` dan `file_owners.properties` dibuat otomatis oleh server saat berjalan.
+
